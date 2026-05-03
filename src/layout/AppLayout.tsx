@@ -9,6 +9,7 @@ import {
   Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useDisplayName } from "@/lib/profile";
 import logo from "@/assets/prodlog-logo.png";
 
 const mainNav = [
@@ -21,6 +22,14 @@ const systemNav = [{ to: "/settings", label: "Settings", icon: Settings }];
 
 export default function AppLayout() {
   const loc = useLocation();
+  const displayName = useDisplayName();
+  const initials = displayName
+    .split(/\s+/)
+    .map((s) => s[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase() || "P";
   const title = (() => {
     if (loc.pathname.startsWith("/dashboard")) return "Dashboard";
     if (loc.pathname.startsWith("/products")) return "Products";
@@ -53,10 +62,10 @@ export default function AppLayout() {
             className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold"
             style={{ background: "linear-gradient(135deg, #c280d2, #ef4f6e)" }}
           >
-            JM
+            {initials}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium truncate">Jide</div>
+            <div className="text-sm font-medium truncate">{displayName}</div>
             <div className="text-xs text-[var(--color-muted)] truncate">Local-only</div>
           </div>
         </div>

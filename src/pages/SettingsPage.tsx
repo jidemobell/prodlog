@@ -1,6 +1,8 @@
-import { Database, KeyRound, HardDrive, Info } from "lucide-react";
+import { Database, KeyRound, HardDrive, Info, User } from "lucide-react";
+import { useDisplayName, setDisplayName } from "@/lib/profile";
 
 export default function SettingsPage() {
+  const displayName = useDisplayName();
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
@@ -9,6 +11,21 @@ export default function SettingsPage() {
           How Prodlog stores your data, by design.
         </p>
       </div>
+
+      <Section icon={User} tone="primary" title="Profile">
+        <p className="text-xs text-[var(--color-muted)] mb-3">
+          Shown in the sidebar and dashboard greeting. Stored locally in your browser data.
+        </p>
+        <input
+          className="input w-full max-w-sm"
+          placeholder="Your name"
+          defaultValue={displayName === "there" ? "" : displayName}
+          onBlur={(e) => setDisplayName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+        />
+      </Section>
 
       <Section icon={Database} tone="primary" title="Database">
         Your data lives in a single SQLite file inside the app's support directory:

@@ -12,8 +12,10 @@ import {
 import { listProducts, listAllAddons, listTenants } from "@/lib/repo";
 import type { Product, Addon, Tenant } from "@/lib/db";
 import { formatMoney, formatDate, cn } from "@/lib/utils";
+import { useDisplayName } from "@/lib/profile";
 
 export default function DashboardPage() {
+  const displayName = useDisplayName();
   const [products, setProducts] = useState<Product[]>([]);
   const [addons, setAddons] = useState<Addon[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -60,7 +62,7 @@ export default function DashboardPage() {
       {/* Greeting */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-semibold">Welcome back, Jide</h2>
+          <h2 className="text-2xl font-semibold">Welcome back, {displayName}</h2>
           <p className="text-sm text-[var(--color-muted)] mt-1">
             Here's what's happening across your portfolio.
           </p>
