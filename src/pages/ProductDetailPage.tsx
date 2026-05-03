@@ -9,6 +9,10 @@ import {
   Pencil,
   GitBranch,
   Rocket,
+  FileText,
+  Palette,
+  Activity,
+  Link as LinkIcon,
   Check,
   X,
 } from "lucide-react";
@@ -18,10 +22,13 @@ import {
   createAddon,
   deleteAddon,
   updateAddon,
-  updateProduct,
+  listProductLinks,
+  createProductLink,
+  updateProductLink,
+  deleteProductLink,
 } from "@/lib/repo";
-import type { Product, Addon } from "@/lib/db";
-import { ADDON_CATEGORIES, DEPLOY_PROVIDERS, COST_PERIODS, CURRENCIES } from "@/lib/enums";
+import type { Product, Addon, ProductLink, ProductLinkKind } from "@/lib/db";
+import { ADDON_CATEGORIES, COST_PERIODS, CURRENCIES } from "@/lib/enums";
 import { formatMoney, formatDate } from "@/lib/utils";
 
 const STATUS_PILL: Record<string, { bg: string; color: string; label: string }> = {
@@ -49,14 +56,17 @@ export default function ProductDetailPage() {
   const { id } = useParams();
   const [product, setProduct] = useState<Product | null>(null);
   const [addons, setAddons] = useState<Addon[]>([]);
+  const [links, setLinks] = useState<ProductLink[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [showLinksEdit, setShowLinksEdit] = useState(false);
+  const [showLinkForm, setShowLinkForm] = useState(false);
+  const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
 
   async function refresh() {
     if (!id) return;
     setProduct(await getProduct(id));
     setAddons(await listAddons(id));
+    setLinks(await listProductLinks(id));
   }
 
   useEffect(() => {
@@ -73,8 +83,6 @@ export default function ProductDetailPage() {
     if (a.cost_period === "annual" && a.cost_amount) return sum + a.cost_amount / 12;
     return sum;
   }, 0);
-
-  const hasLinks = product.repo_url || product.deploy_url || product.deploy_app_name;
 
   return (
     <div className="space-y-6">
@@ -114,77 +122,65 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
-      {/* Links / Deployment */}
+      {/* Links */}
       <section className="card p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="font-semibold">Links & deployment</h3>
+            <h3 className="font-semibold">Links</h3>
             <p className="text-xs text-[var(--color-muted)] mt-0.5">
-              Repo, hosting provider and live URL
+              Repos, deployments, docs, dashboards — anything you need at hand
             </p>
           </div>
-          {!showLinksEdit && (
-            <button
-              onClick={() => setShowLinksEdit(true)}
-              className="btn-ghost"
-            >
-              <Pencil className="w-3.5 h-3.5" /> Edit
+          {!showLinkForm && !editingLinkId && (
+            <button onClick={() => setShowLinkForm(true)} className="btn-primary">
+              <Plus className="w-4 h-4" /> Add link
             </button>
           )}
         </div>
 
-        {showLinksEdit ? (
-          <LinksForm
-            product={product}
-            onCancel={() => setShowLinksEdit(false)}
-            onSaved={() => {
-              setShowLinksEdit(false);
-              refresh();
-            }}
-          />
-        ) : !hasLinks ? (
+        {showLinkForm && (
+          <div className="mb-4">
+            <ProductLinkForm
+              productId={product.id}
+              onCancel={() => setShowLinkForm(false)}
+              onSaved={() => {
+                setShowLinkForm(false);
+                refresh();
+              }}
+            />
+          </div>
+        )}
+
+        {links.length === 0 && !showLinkForm ? (
           <p className="text-sm text-[var(--color-muted)]">
-            No links yet. Add a repo URL and deployment info to jump straight from here.
+            No links yet. Add your repo, deployment, design file, dashboard…
           </p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {product.repo_url && (
-              <LinkChip
-                href={product.repo_url}
-                icon={GitBranch}
-                tone="primary"
-                label="Repository"
-                value={product.repo_url}
-                onClear={async () => {
-                  if (!confirm("Remove repository link?")) return;
-                  await updateProduct(product.id, { repo_url: null });
-                  refresh();
-                }}
-              />
-            )}
-            {(product.deploy_url || product.deploy_app_name) && (
-              <LinkChip
-                href={product.deploy_url ?? undefined}
-                icon={Rocket}
-                tone="mint"
-                label={
-                  product.deploy_provider
-                    ? `Deployed on ${product.deploy_provider}`
-                    : "Deployment"
-                }
-                value={
-                  product.deploy_app_name ?? product.deploy_url ?? "—"
-                }
-                onClear={async () => {
-                  if (!confirm("Remove deployment info?")) return;
-                  await updateProduct(product.id, {
-                    deploy_provider: null,
-                    deploy_app_name: null,
-                    deploy_url: null,
-                  });
-                  refresh();
-                }}
-              />
+            {links.map((l) =>
+              editingLinkId === l.id ? (
+                <div key={l.id} className="md:col-span-2">
+                  <ProductLinkForm
+                    productId={product.id}
+                    link={l}
+                    onCancel={() => setEditingLinkId(null)}
+                    onSaved={() => {
+                      setEditingLinkId(null);
+                      refresh();
+                    }}
+                  />
+                </div>
+              ) : (
+                <LinkChip
+                  key={l.id}
+                  link={l}
+                  onEdit={() => setEditingLinkId(l.id)}
+                  onClear={async () => {
+                    await deleteProductLink(l.id);
+                    refresh();
+                  }}
+                />
+              ),
             )}
           </div>
         )}
@@ -320,7 +316,6 @@ export default function ProductDetailPage() {
                       </button>
                       <button
                         onClick={async () => {
-                          if (!confirm("Delete add-on?")) return;
                           await deleteAddon(a.id);
                           refresh();
                         }}
@@ -341,46 +336,80 @@ export default function ProductDetailPage() {
 }
 
 // ---------- LinkChip ----------
+const LINK_KIND_META: Record<
+  ProductLinkKind,
+  { icon: React.ComponentType<{ className?: string }>; grad: string; tone: string }
+> = {
+  repo: {
+    icon: GitBranch,
+    grad: "linear-gradient(135deg, #5c61f2, #7c80ff)",
+    tone: "Repo",
+  },
+  deploy: {
+    icon: Rocket,
+    grad: "linear-gradient(135deg, #54ba4a, #7ed074)",
+    tone: "Deploy",
+  },
+  docs: {
+    icon: FileText,
+    grad: "linear-gradient(135deg, #43b9b2, #6dd2cc)",
+    tone: "Docs",
+  },
+  design: {
+    icon: Palette,
+    grad: "linear-gradient(135deg, #c280d2, #e0a4f0)",
+    tone: "Design",
+  },
+  dashboard: {
+    icon: Activity,
+    grad: "linear-gradient(135deg, #f0a52e, #ffc163)",
+    tone: "Dashboard",
+  },
+  other: {
+    icon: LinkIcon,
+    grad: "linear-gradient(135deg, #54596d, #7a8094)",
+    tone: "Link",
+  },
+};
+
+const LINK_KINDS: ProductLinkKind[] = ["repo", "deploy", "docs", "design", "dashboard", "other"];
+
 function LinkChip({
-  href,
-  icon: Icon,
-  tone,
-  label,
-  value,
+  link,
+  onEdit,
   onClear,
 }: {
-  href?: string;
-  icon: React.ComponentType<{ className?: string }>;
-  tone: "primary" | "mint";
-  label: string;
-  value: string;
+  link: ProductLink;
+  onEdit?: () => void;
   onClear?: () => void;
 }) {
-  const grad =
-    tone === "primary"
-      ? "linear-gradient(135deg, #5c61f2, #7c80ff)"
-      : "linear-gradient(135deg, #54ba4a, #7ed074)";
+  const meta = LINK_KIND_META[link.kind] ?? LINK_KIND_META.other;
+  const Icon = meta.icon;
+  const subtitle =
+    link.url ||
+    [link.provider, link.app_name].filter(Boolean).join(" · ") ||
+    "—";
   return (
     <div className="flex items-center gap-3 p-3 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)] transition group">
       <div
         className="w-10 h-10 rounded-lg flex items-center justify-center text-white shrink-0 shadow-sm"
-        style={{ background: grad }}
+        style={{ background: meta.grad }}
       >
         <Icon className="w-4 h-4" />
       </div>
-      {href ? (
+      {link.url ? (
         <a
-          href={href}
+          href={link.url}
           target="_blank"
           rel="noreferrer"
           className="flex-1 min-w-0 flex items-center gap-2"
         >
           <div className="flex-1 min-w-0">
             <div className="text-xs uppercase tracking-wider text-[var(--color-muted)] font-semibold">
-              {label}
+              {link.label}
             </div>
             <div className="text-sm font-mono truncate group-hover:text-[var(--color-primary)] transition">
-              {value}
+              {subtitle}
             </div>
           </div>
           <ExternalLink className="w-4 h-4 text-[var(--color-muted)] shrink-0" />
@@ -388,99 +417,195 @@ function LinkChip({
       ) : (
         <div className="flex-1 min-w-0">
           <div className="text-xs uppercase tracking-wider text-[var(--color-muted)] font-semibold">
-            {label}
+            {link.label}
           </div>
-          <div className="text-sm font-mono truncate">{value}</div>
+          <div className="text-sm font-mono truncate">{subtitle}</div>
         </div>
       )}
-      {onClear && (
+      {onEdit && (
         <button
           type="button"
-          onClick={onClear}
-          title="Remove"
-          className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--color-rose)] hover:bg-[var(--color-rose-soft)] transition shrink-0"
+          onClick={onEdit}
+          title="Edit"
+          className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-soft)] transition shrink-0"
         >
-          <Trash2 className="w-3.5 h-3.5" />
+          <Pencil className="w-3.5 h-3.5" />
         </button>
       )}
+      {onClear && <ConfirmTrash onConfirm={onClear} />}
     </div>
   );
 }
 
-// ---------- LinksForm ----------
-function LinksForm({
-  product,
+function ConfirmTrash({ onConfirm }: { onConfirm: () => void }) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 3000);
+    return () => clearTimeout(t);
+  }, [armed]);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (!armed) {
+          setArmed(true);
+          return;
+        }
+        onConfirm();
+        setArmed(false);
+      }}
+      title={armed ? "Click again to confirm" : "Remove"}
+      className={
+        "shrink-0 transition rounded-md " +
+        (armed
+          ? "px-2 py-1 text-xs font-medium bg-[var(--color-rose)] text-white"
+          : "p-1.5 text-[var(--color-muted)] hover:text-[var(--color-rose)] hover:bg-[var(--color-rose-soft)]")
+      }
+    >
+      {armed ? "Confirm?" : <Trash2 className="w-3.5 h-3.5" />}
+    </button>
+  );
+}
+
+// ---------- ProductLinkForm ----------
+const KIND_DEFAULT_LABEL: Record<ProductLinkKind, string> = {
+  repo: "Repository",
+  deploy: "Deployment",
+  docs: "Docs",
+  design: "Design",
+  dashboard: "Dashboard",
+  other: "Link",
+};
+
+function ProductLinkForm({
+  productId,
+  link,
   onCancel,
   onSaved,
 }: {
-  product: Product;
+  productId: string;
+  link?: ProductLink;
   onCancel: () => void;
   onSaved: () => void;
 }) {
-  const [repoUrl, setRepoUrl] = useState(product.repo_url ?? "");
-  const [provider, setProvider] = useState(product.deploy_provider ?? "");
-  const [appName, setAppName] = useState(product.deploy_app_name ?? "");
-  const [deployUrl, setDeployUrl] = useState(product.deploy_url ?? "");
+  const isEdit = !!link;
+  const [kind, setKind] = useState<ProductLinkKind>(link?.kind ?? "repo");
+  const [label, setLabel] = useState(link?.label ?? KIND_DEFAULT_LABEL.repo);
+  const [url, setUrl] = useState(link?.url ?? "");
+  const [provider, setProvider] = useState(link?.provider ?? "");
+  const [appName, setAppName] = useState(link?.app_name ?? "");
+
+  function onKindChange(next: ProductLinkKind) {
+    setKind(next);
+    // auto-update label only if it still matches a default (user hasn't customized)
+    const wasDefault = Object.values(KIND_DEFAULT_LABEL).includes(label);
+    if (!isEdit || wasDefault) setLabel(KIND_DEFAULT_LABEL[next]);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    await updateProduct(product.id, {
-      repo_url: repoUrl || null,
-      deploy_provider: provider || null,
-      deploy_app_name: appName || null,
-      deploy_url: deployUrl || null,
-    });
+    const payload = {
+      kind,
+      label: label.trim() || KIND_DEFAULT_LABEL[kind],
+      url: url.trim() || undefined,
+      provider: provider.trim() || undefined,
+      app_name: appName.trim() || undefined,
+    };
+    if (isEdit && link) {
+      await updateProductLink(link.id, {
+        kind: payload.kind,
+        label: payload.label,
+        url: payload.url ?? null,
+        provider: payload.provider ?? null,
+        app_name: payload.app_name ?? null,
+      });
+    } else {
+      await createProductLink({ product_id: productId, ...payload });
+    }
     onSaved();
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3">
-      <Field label="Repository URL">
-        <input
-          className="input"
-          placeholder="https://github.com/atensai/studycircle"
-          value={repoUrl}
-          onChange={(e) => setRepoUrl(e.target.value)}
-        />
-      </Field>
+    <form
+      onSubmit={submit}
+      className="space-y-3 p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]"
+    >
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold">{isEdit ? "Edit link" : "New link"}</h4>
+      </div>
+
+      <div className="grid grid-cols-6 gap-2">
+        {LINK_KINDS.map((k) => {
+          const meta = LINK_KIND_META[k];
+          const Icon = meta.icon;
+          const active = kind === k;
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => onKindChange(k)}
+              className={
+                "flex flex-col items-center gap-1 py-2 rounded-lg border text-xs transition " +
+                (active
+                  ? "border-[var(--color-primary)] bg-white shadow-sm text-[var(--color-primary)]"
+                  : "border-transparent hover:bg-white text-[var(--color-muted)]")
+              }
+            >
+              <Icon className="w-4 h-4" />
+              <span className="capitalize">{k}</span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Deploy provider">
+        <Field label="Label">
           <input
             className="input"
-            list="deploy-providers"
-            placeholder="fly"
-            value={provider}
-            onChange={(e) => setProvider(e.target.value)}
+            placeholder={KIND_DEFAULT_LABEL[kind]}
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            required
           />
-          <datalist id="deploy-providers">
-            {DEPLOY_PROVIDERS.map((p) => (
-              <option key={p} value={p} />
-            ))}
-          </datalist>
         </Field>
-        <Field label="App name (e.g. on fly.io)">
+        <Field label="URL">
           <input
-            className="input"
-            placeholder="studycircle-api"
-            value={appName}
-            onChange={(e) => setAppName(e.target.value)}
+            className="input font-mono"
+            placeholder="https://…"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
           />
         </Field>
       </div>
-      <Field label="Live URL">
-        <input
-          className="input"
-          placeholder="https://studycircle-api.fly.dev"
-          value={deployUrl}
-          onChange={(e) => setDeployUrl(e.target.value)}
-        />
-      </Field>
+
+      {kind === "deploy" && (
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Provider">
+            <input
+              className="input"
+              placeholder="fly · vercel · railway…"
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+            />
+          </Field>
+          <Field label="App name">
+            <input
+              className="input"
+              placeholder="studycircle-api"
+              value={appName}
+              onChange={(e) => setAppName(e.target.value)}
+            />
+          </Field>
+        </div>
+      )}
+
       <div className="flex justify-end gap-2 pt-1">
         <button type="button" onClick={onCancel} className="btn-ghost">
           <X className="w-3.5 h-3.5" /> Cancel
         </button>
         <button type="submit" className="btn-primary">
-          <Check className="w-4 h-4" /> Save
+          <Check className="w-4 h-4" /> {isEdit ? "Save changes" : "Add link"}
         </button>
       </div>
     </form>

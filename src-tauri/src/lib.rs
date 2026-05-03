@@ -27,6 +27,12 @@ pub fn run() {
             sql: include_str!("../migrations/0003_addon_url.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 4,
+            description: "product links table",
+            sql: include_str!("../migrations/0004_product_links.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

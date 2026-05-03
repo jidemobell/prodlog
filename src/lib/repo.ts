@@ -1,4 +1,4 @@
-import { getDb, type Tenant, type Product, type Addon } from "./db";
+import { getDb, type Tenant, type Product, type Addon, type ProductLink, type ProductLinkKind } from "./db";
 import { uid } from "./utils";
 
 // ---------- Tenants ----------
@@ -183,4 +183,66 @@ export async function updateAddon(
   if (!fields.length) return;
   values.push(id);
   await db.execute(`UPDATE addons SET ${fields.join(", ")} WHERE id = ?`, values);
+}
+
+// ---------- Product Links ----------
+export async function listProductLinks(productId: string): Promise<ProductLink[]> {
+  const db = await getDb();
+  return db.select<ProductLink[]>(
+    "SELECT * FROM product_links WHERE product_id = ? ORDER BY position, created_at",
+    [productId],
+  );
+}
+
+export async function createProductLink(input: {
+  product_id: string;
+  kind: ProductLinkKind;
+  label: string;
+  url?: string;
+  provider?: string;
+  app_name?: string;
+}) {
+  const db = await getDb();
+  const id = uid();
+  const rows = await db.select<{ n: number }[]>(
+    "SELECT COALESCE(MAX(position), -1) + 1 AS n FROM product_links WHERE product_id = ?",
+    [input.product_id],
+  );
+  const position = rows[0]?.n ?? 0;
+  await db.execute(
+    `INSERT INTO product_links (id, product_id, kind, label, url, provider, app_name, position)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      input.product_id,
+      input.kind,
+      input.label,
+      input.url ?? null,
+      input.provider ?? null,
+      input.app_name ?? null,
+      position,
+    ],
+  );
+  return id;
+}
+
+export async function updateProductLink(
+  id: string,
+  patch: Partial<Pick<ProductLink, "kind" | "label" | "url" | "provider" | "app_name">>,
+) {
+  const db = await getDb();
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  for (const [k, v] of Object.entries(patch)) {
+    fields.push(`${k} = ?`);
+    values.push(v ?? null);
+  }
+  if (!fields.length) return;
+  values.push(id);
+  await db.execute(`UPDATE product_links SET ${fields.join(", ")} WHERE id = ?`, values);
+}
+
+export async function deleteProductLink(id: string) {
+  const db = await getDb();
+  await db.execute("DELETE FROM product_links WHERE id = ?", [id]);
 }

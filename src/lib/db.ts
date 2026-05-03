@@ -50,3 +50,23 @@ export interface Addon {
   url: string | null;
   created_at: string;
 }
+
+export type ProductLinkKind =
+  | "repo"
+  | "deploy"
+  | "docs"
+  | "design"
+  | "dashboard"
+  | "other";
+
+export interface ProductLink {
+  id: string;
+  product_id: string;
+  kind: ProductLinkKind;
+  label: string;
+  url: string | null;
+  provider: string | null;
+  app_name: string | null;
+  position: number;
+  created_at: string;
+}
