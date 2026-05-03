@@ -21,6 +21,12 @@ pub fn run() {
             sql: include_str!("../migrations/0002_product_deploy.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "add addon url",
+            sql: include_str!("../migrations/0003_addon_url.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

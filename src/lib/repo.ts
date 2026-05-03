@@ -125,13 +125,14 @@ export async function createAddon(input: {
   renews_on?: string;
   secret_ref?: string;
   notes?: string;
+  url?: string;
 }) {
   const db = await getDb();
   const id = uid();
   await db.execute(
     `INSERT INTO addons
-     (id, product_id, vendor, category, cost_amount, cost_currency, cost_period, renews_on, secret_ref, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (id, product_id, vendor, category, cost_amount, cost_currency, cost_period, renews_on, secret_ref, notes, url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.product_id,
@@ -143,6 +144,7 @@ export async function createAddon(input: {
       input.renews_on ?? null,
       input.secret_ref ?? null,
       input.notes ?? null,
+      input.url ?? null,
     ],
   );
   return id;
@@ -167,6 +169,7 @@ export async function updateAddon(
       | "renews_on"
       | "secret_ref"
       | "notes"
+      | "url"
     >
   >,
 ) {

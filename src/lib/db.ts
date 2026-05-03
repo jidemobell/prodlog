@@ -47,5 +47,6 @@ export interface Addon {
   renews_on: string | null;
   secret_ref: string | null;
   notes: string | null;
+  url: string | null;
   created_at: string;
 }

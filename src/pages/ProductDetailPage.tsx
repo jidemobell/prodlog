@@ -155,6 +155,11 @@ export default function ProductDetailPage() {
                 tone="primary"
                 label="Repository"
                 value={product.repo_url}
+                onClear={async () => {
+                  if (!confirm("Remove repository link?")) return;
+                  await updateProduct(product.id, { repo_url: null });
+                  refresh();
+                }}
               />
             )}
             {(product.deploy_url || product.deploy_app_name) && (
@@ -170,6 +175,15 @@ export default function ProductDetailPage() {
                 value={
                   product.deploy_app_name ?? product.deploy_url ?? "—"
                 }
+                onClear={async () => {
+                  if (!confirm("Remove deployment info?")) return;
+                  await updateProduct(product.id, {
+                    deploy_provider: null,
+                    deploy_app_name: null,
+                    deploy_url: null,
+                  });
+                  refresh();
+                }}
               />
             )}
           </div>
@@ -227,6 +241,7 @@ export default function ProductDetailPage() {
                 <th className="px-6 py-3.5">Category</th>
                 <th className="px-6 py-3.5">Cost</th>
                 <th className="px-6 py-3.5">Renews</th>
+                <th className="px-6 py-3.5">URL</th>
                 <th className="px-6 py-3.5">Secret</th>
                 <th className="px-6 py-3.5"></th>
               </tr>
@@ -235,7 +250,7 @@ export default function ProductDetailPage() {
               {addons.map((a) =>
                 editingId === a.id ? (
                   <tr key={a.id} className="bg-[var(--color-primary-soft)]/30">
-                    <td colSpan={6} className="p-5">
+                    <td colSpan={7} className="p-5">
                       <AddonForm
                         productId={product.id}
                         addon={a}
@@ -264,6 +279,22 @@ export default function ProductDetailPage() {
                       <span className="text-xs text-[var(--color-muted)] ml-1">/{a.cost_period}</span>
                     </td>
                     <td className="px-6 py-4 text-[var(--color-muted)]">{formatDate(a.renews_on)}</td>
+                    <td className="px-6 py-4">
+                      {a.url ? (
+                        <a
+                          href={a.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-[var(--color-primary)] hover:underline font-mono max-w-[220px] truncate"
+                          title={a.url}
+                        >
+                          <ExternalLink className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{a.url.replace(/^https?:\/\//, "")}</span>
+                        </a>
+                      ) : (
+                        <span className="text-xs text-[var(--color-muted)]">—</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4">
                       {a.secret_ref ? (
                         <span
@@ -316,18 +347,20 @@ function LinkChip({
   tone,
   label,
   value,
+  onClear,
 }: {
   href?: string;
   icon: React.ComponentType<{ className?: string }>;
   tone: "primary" | "mint";
   label: string;
   value: string;
+  onClear?: () => void;
 }) {
   const grad =
     tone === "primary"
       ? "linear-gradient(135deg, #5c61f2, #7c80ff)"
       : "linear-gradient(135deg, #54ba4a, #7ed074)";
-  const inner = (
+  return (
     <div className="flex items-center gap-3 p-3 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)] transition group">
       <div
         className="w-10 h-10 rounded-lg flex items-center justify-center text-white shrink-0 shadow-sm"
@@ -335,23 +368,42 @@ function LinkChip({
       >
         <Icon className="w-4 h-4" />
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-xs uppercase tracking-wider text-[var(--color-muted)] font-semibold">
-          {label}
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className="flex-1 min-w-0 flex items-center gap-2"
+        >
+          <div className="flex-1 min-w-0">
+            <div className="text-xs uppercase tracking-wider text-[var(--color-muted)] font-semibold">
+              {label}
+            </div>
+            <div className="text-sm font-mono truncate group-hover:text-[var(--color-primary)] transition">
+              {value}
+            </div>
+          </div>
+          <ExternalLink className="w-4 h-4 text-[var(--color-muted)] shrink-0" />
+        </a>
+      ) : (
+        <div className="flex-1 min-w-0">
+          <div className="text-xs uppercase tracking-wider text-[var(--color-muted)] font-semibold">
+            {label}
+          </div>
+          <div className="text-sm font-mono truncate">{value}</div>
         </div>
-        <div className="text-sm font-mono truncate group-hover:text-[var(--color-primary)] transition">
-          {value}
-        </div>
-      </div>
-      {href && (
-        <ExternalLink className="w-4 h-4 text-[var(--color-muted)] shrink-0" />
+      )}
+      {onClear && (
+        <button
+          type="button"
+          onClick={onClear}
+          title="Remove"
+          className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--color-rose)] hover:bg-[var(--color-rose-soft)] transition shrink-0"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
       )}
     </div>
-  );
-  return href ? (
-    <a href={href} target="_blank" rel="noreferrer">{inner}</a>
-  ) : (
-    inner
   );
 }
 
@@ -449,6 +501,7 @@ function AddonForm({
 }) {
   const [vendor, setVendor] = useState(addon?.vendor ?? "");
   const [category, setCategory] = useState(addon?.category ?? "");
+  const [url, setUrl] = useState(addon?.url ?? "");
   const [costAmount, setCostAmount] = useState(
     addon?.cost_amount != null ? String(addon.cost_amount) : "",
   );
@@ -465,6 +518,7 @@ function AddonForm({
     const payload = {
       vendor,
       category: category || undefined,
+      url: url || undefined,
       cost_amount: costAmount ? parseFloat(costAmount) : undefined,
       cost_currency: costCurrency,
       cost_period: costPeriod,
@@ -476,6 +530,7 @@ function AddonForm({
       await updateAddon(addon.id, {
         vendor: payload.vendor,
         category: payload.category ?? null,
+        url: payload.url ?? null,
         cost_amount: payload.cost_amount ?? null,
         cost_currency: payload.cost_currency ?? null,
         cost_period: payload.cost_period ?? null,
@@ -562,6 +617,14 @@ function AddonForm({
           </select>
         </Field>
       </div>
+      <Field label="Project URL">
+        <input
+          className="input font-mono"
+          placeholder="https://app.supabase.com/project/abc123"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+      </Field>
       <Field label="Secret reference">
         <input
           className="input font-mono"
